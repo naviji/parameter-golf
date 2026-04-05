@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import time
 
-MAX_WALLCLOCK_SECONDS="300"
+MAX_WALLCLOCK_SECONDS="1000"
 VAL_LOSS_EVERY="50"
 TRAIN_LOG_EVERY="25"
 FAST_VAL_TOKENS="5000000"
@@ -22,9 +22,124 @@ METRICS_CACHE_DIR = Path("runs/metrics_cache")
 # 10L Int5-MLP + BigramHash(10240) SOTA and Baseline
 EXPERIMENTS = {
     # # 10L Int5-MLP + BigramHash(10240): 1.1428 BPB
-    "SOTA_Int5MLP_BigramHash": {
+    # "SOTA_Int5MLP_BigramHash": {
+    #     "env": {
+    #         "RUN_ID": "SOTA_Int5MLP_BigramHash_10min",
+    #         "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
+    #         "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
+    #         "VOCAB_SIZE": "1024",
+    #         "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,
+    #         "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
+    #         # "FAST_VAL_TOKENS": FAST_VAL_TOKENS,
+    #         "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
+    #         "EVAL_STRIDE": "1024", # No sliding window for now while testing (must match seq len)
+
+    #         # --- 2. Shrink the Compute Payload (The Big Speedup) ---
+    #         "TRAIN_BATCH_TOKENS": "524288", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
+    #         "TRAIN_SEQ_LEN": "1024",        # Down from 2048 (4x faster attention)
+
+    #         # --- 3. Trim the Architecture ---
+    #         "NUM_LAYERS": "5",              # Down from 10
+    #         "MLP_MULT": "2.0",              # Down from 3.0 (makes Int5 compression faster)
+            
+    #         # --- 4. Boost Weight Decay (Crucial for 16MB) ---
+    #         # Since we are doing ~1200 steps instead of ~4000, we need to apply 
+    #         # 3x more weight decay per step to hit the same sparsity target by the end.
+    #         # "WEIGHT_DECAY": "0.12",         
+            
+    #         # --- FASTER LEARNING TWEAKS ---
+    #         "MATRIX_LR": "0.03",              # Up from 0.02 (Bigger steps)
+    #         "TIED_EMBED_LR": "0.05",          # Up from 0.03 (Learn embeddings faster)
+    #         "BETA2": "0.90",                  # Down from 0.95 (Faster Adam adaptation)
+            
+    #         "MUON_BACKEND_STEPS": "3",        # Less overhead per step
+    #         "MUON_MOMENTUM_WARMUP_STEPS": "300", # Ramp up momentum 5x faster!
+            
+    #         # --- CRITICAL: Settle the loss before the 10-min buzzer ---
+    #         "WARMDOWN_ITERS": "250",          # Decay LR over the last ~2 minutes
+    #         "SWA_ENABLED": "0",               # Disable for short evals
+    #     },
+    #     "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
+    #             "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
+    #     "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
+    # },
+    # "SOTA_Int5MLP_BigramHash_with_multi_hash": {
+    #     "env": {
+    #         "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash",
+    #         "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
+    #         "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
+    #         "VOCAB_SIZE": "1024",
+    #         "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,
+    #         "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
+    #         # "FAST_VAL_TOKENS": FAST_VAL_TOKENS,
+    #         "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
+    #         "EVAL_STRIDE": "1024", # No sliding window for now while testing (must match seq len)
+
+    #         # --- 2. Shrink the Compute Payload (The Big Speedup) ---
+    #         "TRAIN_BATCH_TOKENS": "524288", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
+    #         "TRAIN_SEQ_LEN": "1024",        # Down from 2048 (4x faster attention)
+
+    #         # --- 3. Trim the Architecture ---
+    #         "NUM_LAYERS": "5",              # Down from 10
+    #         "MLP_MULT": "2.0",              # Down from 3.0 (makes Int5 compression faster)
+    #         # --- FASTER LEARNING TWEAKS ---
+    #         "MATRIX_LR": "0.03",              # Up from 0.02 (Bigger steps)
+    #         "TIED_EMBED_LR": "0.05",          # Up from 0.03 (Learn embeddings faster)
+    #         "BETA2": "0.90",                  # Down from 0.95 (Faster Adam adaptation)
+            
+    #         "MUON_BACKEND_STEPS": "3",        # Less overhead per step
+    #         "MUON_MOMENTUM_WARMUP_STEPS": "300", # Ramp up momentum 5x faster!
+            
+    #         # --- CRITICAL: Settle the loss before the 10-min buzzer ---
+    #         "WARMDOWN_ITERS": "250",          # Decay LR over the last ~2 minutes
+    #         "SWA_ENABLED": "0",              # Disable for short evals
+
+    #         "MULTI_HASH_ENABLED": "1",
+    #     },
+    #     "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
+    #             "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
+    #     "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
+    # },
+    # "SOTA_Int5MLP_BigramHash_with_multi_hash_layer6": {
+    #     "env": {
+    #         "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash_layer6",
+    #         "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
+    #         "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
+    #         "VOCAB_SIZE": "1024",
+    #         "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,
+    #         "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
+    #         # "FAST_VAL_TOKENS": FAST_VAL_TOKENS,
+    #         "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
+    #         "EVAL_STRIDE": "1024", # No sliding window for now while testing (must match seq len)
+
+    #         # --- 2. Shrink the Compute Payload (The Big Speedup) ---
+    #         "TRAIN_BATCH_TOKENS": "524288", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
+    #         "TRAIN_SEQ_LEN": "1024",        # Down from 2048 (4x faster attention)
+
+    #         # --- 3. Trim the Architecture ---
+    #         "NUM_LAYERS": "6",              # Down from 10
+    #         "MLP_MULT": "2.0",              # Down from 3.0 (makes Int5 compression faster)
+    #         # --- FASTER LEARNING TWEAKS ---
+    #         "MATRIX_LR": "0.03",              # Up from 0.02 (Bigger steps)
+    #         "TIED_EMBED_LR": "0.05",          # Up from 0.03 (Learn embeddings faster)
+    #         "BETA2": "0.90",                  # Down from 0.95 (Faster Adam adaptation)
+            
+    #         "MUON_BACKEND_STEPS": "3",        # Less overhead per step
+    #         "MUON_MOMENTUM_WARMUP_STEPS": "300", # Ramp up momentum 5x faster!
+            
+    #         # --- CRITICAL: Settle the loss before the 10-min buzzer ---
+    #         "WARMDOWN_ITERS": "250",          # Decay LR over the last ~2 minutes
+    #         "SWA_ENABLED": "0",              # Disable for short evals
+
+    #         "MULTI_HASH_ENABLED": "1",
+    #     },
+    #     "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
+    #             "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
+    #     "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
+    # },
+    "SOTA_Int5MLP_BigramHash_with_without_multi_hash_less_batch_size_1": {
         "env": {
-            "RUN_ID": "SOTA_Int5MLP_BigramHash_10min",
+            "RUN_ID": "SOTA_Int5MLP_BigramHash_with_without_multi_hash_less_batch_size_1",
             "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
             "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
             "VOCAB_SIZE": "1024",
@@ -35,48 +150,7 @@ EXPERIMENTS = {
             "EVAL_STRIDE": "1024", # No sliding window for now while testing (must match seq len)
 
             # --- 2. Shrink the Compute Payload (The Big Speedup) ---
-            "TRAIN_BATCH_TOKENS": "524288", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
-            "TRAIN_SEQ_LEN": "1024",        # Down from 2048 (4x faster attention)
-
-            # --- 3. Trim the Architecture ---
-            "NUM_LAYERS": "5",              # Down from 10
-            "MLP_MULT": "2.0",              # Down from 3.0 (makes Int5 compression faster)
-            
-            # --- 4. Boost Weight Decay (Crucial for 16MB) ---
-            # Since we are doing ~1200 steps instead of ~4000, we need to apply 
-            # 3x more weight decay per step to hit the same sparsity target by the end.
-            # "WEIGHT_DECAY": "0.12",         
-            
-            # --- FASTER LEARNING TWEAKS ---
-            "MATRIX_LR": "0.03",              # Up from 0.02 (Bigger steps)
-            "TIED_EMBED_LR": "0.05",          # Up from 0.03 (Learn embeddings faster)
-            "BETA2": "0.90",                  # Down from 0.95 (Faster Adam adaptation)
-            
-            "MUON_BACKEND_STEPS": "3",        # Less overhead per step
-            "MUON_MOMENTUM_WARMUP_STEPS": "300", # Ramp up momentum 5x faster!
-            
-            # --- CRITICAL: Settle the loss before the 10-min buzzer ---
-            "WARMDOWN_ITERS": "250",          # Decay LR over the last ~2 minutes
-            "SWA_ENABLED": "0",               # Disable for short evals
-        },
-        "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
-                "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
-        "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
-    },
-    "SOTA_Int5MLP_BigramHash_with_multi_hash": {
-        "env": {
-            "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash",
-            "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
-            "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
-            "VOCAB_SIZE": "1024",
-            "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,
-            "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
-            # "FAST_VAL_TOKENS": FAST_VAL_TOKENS,
-            "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
-            "EVAL_STRIDE": "1024", # No sliding window for now while testing (must match seq len)
-
-            # --- 2. Shrink the Compute Payload (The Big Speedup) ---
-            "TRAIN_BATCH_TOKENS": "524288", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
+            "TRAIN_BATCH_TOKENS": "131072", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
             "TRAIN_SEQ_LEN": "1024",        # Down from 2048 (4x faster attention)
 
             # --- 3. Trim the Architecture ---
@@ -94,52 +168,14 @@ EXPERIMENTS = {
             "WARMDOWN_ITERS": "250",          # Decay LR over the last ~2 minutes
             "SWA_ENABLED": "0",              # Disable for short evals
 
-            "MULTI_HASH_ENABLED": "1",
         },
         "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
                 "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
         "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
     },
-    "SOTA_Int5MLP_BigramHash_with_multi_hash_layer6": {
+    "SOTA_Int5MLP_BigramHash_with_multi_hash_less_batch_size_2": {
         "env": {
-            "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash_layer6",
-            "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
-            "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
-            "VOCAB_SIZE": "1024",
-            "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,
-            "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
-            # "FAST_VAL_TOKENS": FAST_VAL_TOKENS,
-            "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
-            "EVAL_STRIDE": "1024", # No sliding window for now while testing (must match seq len)
-
-            # --- 2. Shrink the Compute Payload (The Big Speedup) ---
-            "TRAIN_BATCH_TOKENS": "524288", #  "131072", # "262144", # "524288", # Down from 786k (1/3 the tokens per step)
-            "TRAIN_SEQ_LEN": "1024",        # Down from 2048 (4x faster attention)
-
-            # --- 3. Trim the Architecture ---
-            "NUM_LAYERS": "6",              # Down from 10
-            "MLP_MULT": "2.0",              # Down from 3.0 (makes Int5 compression faster)
-            # --- FASTER LEARNING TWEAKS ---
-            "MATRIX_LR": "0.03",              # Up from 0.02 (Bigger steps)
-            "TIED_EMBED_LR": "0.05",          # Up from 0.03 (Learn embeddings faster)
-            "BETA2": "0.90",                  # Down from 0.95 (Faster Adam adaptation)
-            
-            "MUON_BACKEND_STEPS": "3",        # Less overhead per step
-            "MUON_MOMENTUM_WARMUP_STEPS": "300", # Ramp up momentum 5x faster!
-            
-            # --- CRITICAL: Settle the loss before the 10-min buzzer ---
-            "WARMDOWN_ITERS": "250",          # Decay LR over the last ~2 minutes
-            "SWA_ENABLED": "0",              # Disable for short evals
-
-            "MULTI_HASH_ENABLED": "1",
-        },
-        "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
-                "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
-        "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
-    },
-    "SOTA_Int5MLP_BigramHash_with_multi_hash_less_batch_size": {
-        "env": {
-            "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash_less_batch_size",
+            "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash_less_batch_size_2",
             "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
             "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
             "VOCAB_SIZE": "1024",
@@ -173,22 +209,22 @@ EXPERIMENTS = {
         "cmd": ["torchrun", "--standalone", "--nproc_per_node=1",
                 "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"],
         "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
-    },
+    }, 
     # Baseline for comparison
-    "baseline_10min": {
-    "env": {
-        "RUN_ID": "baseline_10min",
-        "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
-        "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
-        "VOCAB_SIZE": "1024",
-        "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,  # 10 minutes
-        "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
-        "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
-        # "FAST_VAL_TOKENS": FAST_VAL_TOKENS
-    },
-    "cmd": ["torchrun", "--standalone", "--nproc_per_node=1", "train_gpt.py"],
-    "description": "Baseline (Score: ~1.22)"
-    },
+    # "baseline_10min": {
+    # "env": {
+    #     "RUN_ID": "baseline_10min",
+    #     "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
+    #     "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
+    #     "VOCAB_SIZE": "1024",
+    #     "MAX_WALLCLOCK_SECONDS": MAX_WALLCLOCK_SECONDS,  # 10 minutes
+    #     "VAL_LOSS_EVERY": VAL_LOSS_EVERY,  # Periodic validation for monitoring
+    #     "TRAIN_LOG_EVERY": TRAIN_LOG_EVERY,
+    #     # "FAST_VAL_TOKENS": FAST_VAL_TOKENS
+    # },
+    # "cmd": ["torchrun", "--standalone", "--nproc_per_node=1", "train_gpt.py"],
+    # "description": "Baseline (Score: ~1.22)"
+    # },
 }
 
 # Updated regex patterns to match actual train_gpt.py output format
