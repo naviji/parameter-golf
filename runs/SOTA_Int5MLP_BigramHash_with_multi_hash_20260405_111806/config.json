@@ -1,0 +1,37 @@
+{
+  "name": "SOTA_Int5MLP_BigramHash_with_multi_hash",
+  "config": {
+    "env": {
+      "RUN_ID": "SOTA_Int5MLP_BigramHash_with_multi_hash",
+      "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
+      "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
+      "VOCAB_SIZE": "1024",
+      "MAX_WALLCLOCK_SECONDS": "600",
+      "VAL_LOSS_EVERY": "100",
+      "TRAIN_LOG_EVERY": "50",
+      "EVAL_STRIDE": "1024",
+      "TRAIN_BATCH_TOKENS": "524288",
+      "TRAIN_SEQ_LEN": "1024",
+      "NUM_LAYERS": "5",
+      "MLP_MULT": "2.0",
+      "MATRIX_LR": "0.03",
+      "TIED_EMBED_LR": "0.05",
+      "BETA2": "0.90",
+      "MUON_BACKEND_STEPS": "3",
+      "MUON_MOMENTUM_WARMUP_STEPS": "300",
+      "WARMDOWN_ITERS": "250",
+      "SWA_ENABLED": "0",
+      "MULTI_HASH_ENABLED": "1"
+    },
+    "cmd": [
+      "torchrun",
+      "--standalone",
+      "--nproc_per_node=1",
+      "records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/train_gpt.py"
+    ],
+    "description": "10L Int5-MLP + BigramHash(10240), SWA(0.4), WD=0.04 (Score: 1.1428)"
+  },
+  "config_hash": "ea247f58511e",
+  "timestamp": "20260405_111806",
+  "git_commit": "9d070df"
+}

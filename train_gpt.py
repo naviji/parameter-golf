@@ -210,6 +210,13 @@ def load_validation_tokens(pattern: str, seq_len: int) -> Tensor:
         raise FileNotFoundError(f"No files found for pattern: {pattern}")
     # The export pipeline writes the fixed first-50k-doc validation set to fineweb_val_*.
     tokens = torch.cat([load_data_shard(file) for file in files]).contiguous()
+    
+    # --- SAFE SLICING VIA ENV VAR ---
+    fast_val_limit = int(os.environ.get("FAST_VAL_TOKENS", 0))
+    if fast_val_limit > 0:
+        tokens = tokens[:fast_val_limit]
+    # --------------------------------
+    
     usable = ((tokens.numel() - 1) // seq_len) * seq_len
     if usable <= 0:
         raise ValueError(f"Validation split is too short for TRAIN_SEQ_LEN={seq_len}")

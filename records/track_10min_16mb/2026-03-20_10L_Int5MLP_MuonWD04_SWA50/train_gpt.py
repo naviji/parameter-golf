@@ -92,6 +92,8 @@ class Hyperparameters:
     swa_enabled = bool(int(os.environ.get("SWA_ENABLED", "1")))
     swa_start_frac = float(os.environ.get("SWA_START_FRAC", 0.4))
     swa_every = int(os.environ.get("SWA_EVERY", 50))
+    
+    multi_hash_enabled = bool(int(os.environ.get("MULTI_HASH_ENABLED", "0")))
 
 # -----------------------------
 # MUON OPTIMIZER
@@ -206,6 +208,13 @@ def load_validation_tokens(pattern: str, seq_len: int) -> Tensor:
     if not files:
         raise FileNotFoundError(f"No files found for pattern: {pattern}")
     tokens = torch.cat([load_data_shard(file) for file in files]).contiguous()
+    
+    # --- SAFE SLICING VIA ENV VAR ---
+    fast_val_limit = int(os.environ.get("FAST_VAL_TOKENS", 0))
+    if fast_val_limit > 0:
+        tokens = tokens[:fast_val_limit]
+    # --------------------------------
+
     usable = ((tokens.numel() - 1) // seq_len) * seq_len
     if usable <= 0:
         raise ValueError(f"Validation split is too short for TRAIN_SEQ_LEN={seq_len}")
@@ -586,7 +595,7 @@ class SmearGate(nn.Module):
 
 class BigramHashEmbedding(nn.Module):
     """Hash consecutive token pairs into a learned embedding table."""
-    def __init__(self, bigram_vocab_size: int, bigram_dim: int, model_dim: int):
+    def __init__(self, bigram_vocab_size: int, bigram_dim: int, model_dim: int, multi_hash_enabled: bool):
         super().__init__()
         self.bigram_vocab_size = bigram_vocab_size
         self.embed = nn.Embedding(bigram_vocab_size, bigram_dim)
@@ -595,21 +604,24 @@ class BigramHashEmbedding(nn.Module):
         if self.proj is not None:
             nn.init.zeros_(self.proj.weight)
         self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
+        self.multi_hash_enabled = multi_hash_enabled 
 
-    def bigram_hash(self, tokens: Tensor) -> Tensor:
+    def bigram_hash(self, tokens: Tensor, p1: int = 36313, p2: int = 27191) -> Tensor:
         t = tokens.to(torch.int32)
         mod = self.bigram_vocab_size - 1
         out = torch.empty_like(t)
         out[..., 0] = mod
-        out[..., 1:] = torch.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
+        out[..., 1:] = torch.bitwise_xor(p1 * t[..., 1:], p2 * t[..., :-1]) % mod
         return out.long()
 
     def forward(self, token_ids: Tensor) -> Tensor:
         h = self.embed(self.bigram_hash(token_ids))
+        if (self.multi_hash_enabled):
+            h += self.embed(self.bigram_hash(token_ids, 17183, 41231)) 
+        
         if self.proj is not None:
             h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
-
 
 class Block(nn.Module):
     def __init__(self, dim: int, num_heads: int, num_kv_heads: int, mlp_mult: float, rope_base: float, qk_gain_init: float):
@@ -647,6 +659,7 @@ class GPT(nn.Module):
         qk_gain_init: float,
         bigram_vocab_size: int = 0,
         bigram_dim: int = 128,
+        multi_hash_enabled: bool = False,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -655,7 +668,7 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
-        self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim) if bigram_vocab_size > 0 else None
+        self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim, multi_hash_enabled) if bigram_vocab_size > 0 else None
         self.num_encoder_layers = num_layers // 2
         self.num_decoder_layers = num_layers - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
@@ -916,6 +929,7 @@ def main() -> None:
         qk_gain_init=args.qk_gain_init,
         bigram_vocab_size=args.bigram_vocab_size,
         bigram_dim=args.bigram_dim,
+        multi_hash_enabled=args.multi_hash_enabled,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):

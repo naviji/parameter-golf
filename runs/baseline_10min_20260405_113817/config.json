@@ -1,0 +1,24 @@
+{
+  "name": "baseline_10min",
+  "config": {
+    "env": {
+      "RUN_ID": "baseline_10min",
+      "DATA_PATH": "./data/datasets/fineweb10B_sp1024/",
+      "TOKENIZER_PATH": "./data/tokenizers/fineweb_1024_bpe.model",
+      "VOCAB_SIZE": "1024",
+      "MAX_WALLCLOCK_SECONDS": "300",
+      "VAL_LOSS_EVERY": "50",
+      "TRAIN_LOG_EVERY": "25"
+    },
+    "cmd": [
+      "torchrun",
+      "--standalone",
+      "--nproc_per_node=1",
+      "train_gpt.py"
+    ],
+    "description": "Baseline (Score: ~1.22)"
+  },
+  "config_hash": "cb57172387ac",
+  "timestamp": "20260405_113817",
+  "git_commit": "9d070df"
+}
